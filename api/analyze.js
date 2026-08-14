@@ -8,128 +8,127 @@ module.exports = async (req, res) => {
 
     if (!apiKey) {
       return res.status(500).json({
-        error: "OPENAI_API_KEY is not configured in Vercel."
+        error: "OPENAI_API_KEY is missing in Vercel."
       });
     }
 
     const { image } = req.body || {};
 
-    if (!image || !image.startsWith("data:image/")) {
+    if (!image) {
       return res.status(400).json({
-        error: "A valid chart image is required."
+        error: "Chart image is required."
       });
     }
 
-    const response = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: "gpt-4.1-mini",
-        input: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "input_text",
-                text: `Analyze only what is visible in this trading chart screenshot.
+    const response = await fetch(
+      "https://api.openai.com/v1/responses",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + apiKey
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "input_text",
+                  text:
+                    "Analyze this trading chart screenshot. " +
+                    "Return ONLY valid JSON with these fields: " +
+                    "market, timeframe, trend, signal, confidence, " +
+                    "support, resistance, expiry, reasons, risk. " +
+                    "signal must be CALL / UP, PUT / DOWN, or NO TRADE. " +
+                    "confidence must be 0 to 100. " +
+                    "If unclear, use NO TRADE. " +
+                    "Never guarantee profit."
+                },
+                {
+                  type: "input_image",
+                  image_url: image
+                }
+              ]
+            }
+          ]
+        })
+      }
+    );
 
-Return ONLY valid JSON in this format:
-
-{
-  "market": "Unknown",
-  "timeframe": "Unknown",
-  "trend": "Bullish",
-  "signal": "CALL / UP",
-  "confidence": 50,
-  "support": "Unknown",
-  "resistance": "Unknown",
-  "expiry": "Not enough evidence",
-  "reasons": ["reason 1", "reason 2", "reason 3"],
-  "risk": "Short risk note"
-}
-
-Rules:
-- signal must be CALL / UP, PUT / DOWN, or NO TRADE.
-- confidence must be a number from 0 to 100.
-- If the chart is unclear, use NO TRADE and low confidence.
-- Never guarantee profit.
-- Never invent unreadable prices.
-- This is analytical assistance, not financial advice.`
-              },
-              {
-                type: "input_image",
-                image_url: image
-              }
-            ]
-          }
-        ]
-      })
-    });
-
-    const text = await response.text();
+    const raw = await response.text();
 
     if (!response.ok) {
-      let errorMessage = "OpenAI API request failed.";
+      let message = "OpenAI API request failed.";
 
       try {
-        const errorData = JSON.parse(text);
-        errorMessage =
-          errorData?.error?.message || errorMessage;
-      } catch (_) {}
+        const errorData = JSON.parse(raw);
+        message =
+          errorData?.error?.message || message;
+      } catch (e) {}
 
-      return res.status(response.status).json({
-        error: errorMessage
+      return res.status(500).json({
+        error: message
       });
     }
 
     let data;
 
     try {
-      data = JSON.parse(text);
-    } catch (_) {
-      return res.status(502).json({
-        error: "OpenAI returned an invalid response."
+      data = JSON.parse(raw);
+    } catch (e) {
+      return res.status(500).json({
+        error: "Invalid response received from OpenAI."
       });
     }
 
-    const outputText =
-      data?.output_text ||
-      data?.output?.[0]?.content?.find(
-        item => item.type === "output_text"
-      )?.text;
+    let output = data.output_text;
 
-    if (!outputText) {
-      return res.status(502).json({
+    if (!output && data.output) {
+      for (const item of data.output) {
+        if (!item.content) continue;
+
+        for (const part of item.content) {
+          if (part.type === "output_text") {
+            output = part.text;
+            break;
+          }
+        }
+
+        if (output) break;
+      }
+    }
+
+    if (!output) {
+      return res.status(500).json({
         error: "AI returned an empty response."
       });
     }
 
-    const cleaned = outputText
-      .replace(/^```json\s*/i, "")
-      .replace(/^```\s*/i, "")
+    output = output
+      .replace(/^```json/i, "")
+      .replace(/^```/i, "")
       .replace(/```$/i, "")
       .trim();
 
     let result;
 
     try {
-      result = JSON.parse(cleaned);
-    } catch (_) {
-      return res.status(502).json({
-        error: "AI returned an unexpected format."
+      result = JSON.parse(output);
+    } catch (e) {
+      return res.status(500).json({
+        error: "AI response was not valid JSON."
       });
     }
 
     return res.status(200).json(result);
 
   } catch (error) {
-    console.error(error);
+    console.error("SERVER ERROR:", error);
 
     return res.status(500).json({
-      error: error?.message || "Server error while analyzing the chart."
+      error: error.message || "Server error."
     });
   }
 };
