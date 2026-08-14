@@ -1,9 +1,1 @@
-{
-  "name": "binary-ai-vercel-ready",
-  "version": "1.0.0",
-  "private": true,
-  "type": "module",
-  "dependencies": {
-    "openai": "^5.12.0"
-  }
-}
+{"name":"binary-ai-premium","version":"1.0.0","private":true,"type":"module","dependencies":{"openai":"^5.12.0"}}
