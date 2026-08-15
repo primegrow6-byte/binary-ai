@@ -1,6 +1,8 @@
-module.exports = async (req, res) => {
+export default async function handler(req, res) {
   if (req.method !== "POST") {
-    return res.status(405).json({ error: "POST method required" });
+    return res.status(405).json({
+      error: "POST method required"
+    });
   }
 
   try {
@@ -26,7 +28,7 @@ module.exports = async (req, res) => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": "Bearer " + apiKey
+          "Authorization": `Bearer ${apiKey}`
         },
         body: JSON.stringify({
           model: "gpt-4.1-mini",
@@ -38,12 +40,11 @@ module.exports = async (req, res) => {
                   type: "input_text",
                   text:
                     "Analyze this trading chart screenshot. " +
-                    "Return ONLY valid JSON with these fields: " +
-                    "market, timeframe, trend, signal, confidence, " +
-                    "support, resistance, expiry, reasons, risk. " +
+                    "Return ONLY valid JSON. " +
+                    "Fields: market, timeframe, trend, signal, confidence, support, resistance, reasons, risk. " +
                     "signal must be CALL / UP, PUT / DOWN, or NO TRADE. " +
                     "confidence must be 0 to 100. " +
-                    "If unclear, use NO TRADE. " +
+                    "If the chart is unclear, use NO TRADE. " +
                     "Never guarantee profit."
                 },
                 {
@@ -64,9 +65,8 @@ module.exports = async (req, res) => {
 
       try {
         const errorData = JSON.parse(raw);
-        message =
-          errorData?.error?.message || message;
-      } catch (e) {}
+        message = errorData?.error?.message || message;
+      } catch {}
 
       return res.status(500).json({
         error: message
@@ -77,19 +77,17 @@ module.exports = async (req, res) => {
 
     try {
       data = JSON.parse(raw);
-    } catch (e) {
+    } catch {
       return res.status(500).json({
         error: "Invalid response received from OpenAI."
       });
     }
 
-    let output = data.output_text;
+    let output = data.output_text || "";
 
     if (!output && data.output) {
       for (const item of data.output) {
-        if (!item.content) continue;
-
-        for (const part of item.content) {
+        for (const part of item.content || []) {
           if (part.type === "output_text") {
             output = part.text;
             break;
@@ -116,7 +114,7 @@ module.exports = async (req, res) => {
 
     try {
       result = JSON.parse(output);
-    } catch (e) {
+    } catch {
       return res.status(500).json({
         error: "AI response was not valid JSON."
       });
@@ -131,4 +129,4 @@ module.exports = async (req, res) => {
       error: error.message || "Server error."
     });
   }
-};
+}
